@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Scanner Live - Kartu Pelajar</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0f172a;color:#fff;font-family:Arial,sans-serif;min-height:100vh;padding:16px}
+.wrap{max-width:520px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.title{font-size:20px;font-weight:700}.badge{background:#166534;padding:7px 11px;border-radius:999px;font-size:12px}.reader{background:#000;border-radius:18px;overflow:hidden;border:2px solid #334155;min-height:320px}.status{margin-top:12px;padding:12px;border-radius:12px;background:#1e293b;text-align:center;font-size:14px}.result{margin-top:12px;padding:16px;border-radius:14px;background:#fff;color:#0f172a;display:none}.result.ok{display:block;border-left:5px solid #16a34a}.result.bad{display:block;border-left:5px solid #dc2626}.hint{font-size:12px;color:#94a3b8;text-align:center;margin-top:10px;line-height:1.5}.btn{width:100%;margin-top:12px;padding:13px;border:0;border-radius:12px;font-weight:700;font-size:15px}.start{background:#2563eb;color:#fff}.stop{background:#334155;color:#fff}.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="title">📷 Scanner Live</div><div id="badge" class="badge">SIAP</div></div>
+  <div id="reader" class="reader"></div>
+  <div id="status" class="status">Memulai kamera...</div>
+  <div id="result" class="result"></div>
+  <button id="start" class="btn start hidden">Aktifkan Kamera</button>
+  <button id="stop" class="btn stop">Hentikan Kamera</button>
+  <div class="hint">Kamera tetap menyala. Arahkan barcode ke kotak scan. Setelah satu barcode terbaca, scanner otomatis siap membaca kartu berikutnya.</div>
+</div>
+<script>
+let qr=null, running=false, last='', lastAt=0, busy=false;
+const statusEl=document.getElementById('status'), badge=document.getElementById('badge'), result=document.getElementById('result');
+function say(t){statusEl.textContent=t}
+function showResult(t,ok=true){result.className='result '+(ok?'ok':'bad');result.innerHTML=t}
+function beep(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const c=new C(),o=c.createOscillator(),g=c.createGain();o.frequency.value=880;o.type='sine';g.gain.value=.08;o.connect(g);g.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close()},120)}catch(e){}}
+async function start(){
+ if(running)return;
+ if(!window.Html5Qrcode){say('Library scanner gagal dimuat.');return}
+ try{
+  qr=new Html5Qrcode('reader');
+  say('Meminta izin kamera...');
+  const devices=await Html5Qrcode.getCameras();
+  if(!devices||!devices.length)throw new Error('Kamera tidak ditemukan.');
+  const rear=devices.find(d=>/back|rear|environment|belakang/i.test(d.label));
+  const cam=(rear||devices[devices.length-1]).id;
+  await qr.start(cam,{fps:15,qrbox:{width:300,height:180},aspectRatio:1.777},onScan,()=>{});
+  running=true;badge.textContent='LIVE';badge.style.background='#166534';say('Kamera aktif — siap scan otomatis.');
+  document.getElementById('start').classList.add('hidden');document.getElementById('stop').classList.remove('hidden');
+ }catch(e){running=false;badge.textContent='GAGAL';badge.style.background='#991b1b';say('Kamera gagal: '+(e.message||e));document.getElementById('start').classList.remove('hidden');}
+}
+function onScan(text){
+ const v=String(text||'').trim(); if(!v)return;
+ const now=Date.now();
+ if(v===last && now-lastAt<3500)return;
+ if(busy)return;
+ last=v;lastAt=now;busy=true;beep();
+ showResult('<b>Barcode terbaca</b><div style="font-family:monospace;margin-top:6px">'+esc(v)+'</div><div style="margin-top:6px;color:#64748b">Dikirim ke aplikasi...</div>');
+ try{window.opener?.postMessage({type:'KARTU_PELAJAR_BARCODE',barcode:v},'*');}catch(e){}
+ say('✓ Barcode terbaca. Siap membaca kartu berikutnya...');
+ setTimeout(()=>{busy=false},700);
+}
+async function stop(){try{if(qr)await qr.stop();}catch(e){}try{if(qr)qr.clear();}catch(e){}qr=null;running=false;badge.textContent='BERHENTI';badge.style.background='#475569';say('Kamera dihentikan.');document.getElementById('stop').classList.add('hidden');document.getElementById('start').classList.remove('hidden')}
+function esc(s){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+document.getElementById('start').onclick=start;document.getElementById('stop').onclick=stop;window.addEventListener('load',start);
+</script>
+</body></html>
